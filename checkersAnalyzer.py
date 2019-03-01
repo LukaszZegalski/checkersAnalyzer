@@ -1,4 +1,5 @@
 import cv2 as cv
+import numpy as np
 
 class checkersAnalyzer(object):
 
@@ -7,29 +8,25 @@ class checkersAnalyzer(object):
         self.debug = debug
 
     def read(self, path):
-        self.image = cv.imread(path, 0)
+        self.image = cv.imread(path)
+        self.image = cv.resize(self.image, (300,300))
 
         if self.debug:
             cv.imshow('Orginal', self.image)
 
-    def threshold(self):
+    def detectBoard(self):
+        edges = cv.Canny(self.image, 50, 150, apertureSize=3)
+        lines = cv.HoughLinesP(image=edges, rho=1, theta=np.pi / 180, threshold=100, lines=np.array([]),
+                                minLineLength=100, maxLineGap=80)
+        i = 0
+        cv.line(self.image, (lines[i][0][0], lines[i][0][1]), (lines[i][0][2], lines[i][0][3]), (0, 0, 255), 3, cv.LINE_AA)
+        i = len(lines) - 1
+        cv.line(self.image, (lines[i][0][0], lines[i][0][1]), (lines[i][0][2], lines[i][0][3]), (0, 0, 255), 3, cv.LINE_AA)
+
+
+        # Todo: Need calculate coordinate of right upper point.
         if self.debug:
-            thresType = ['Binary', 'Binary inv', 'Trunc', 'Tozero', 'Tozero inv']
-            result = []
-            ret, thresh1 = cv.threshold(self.image, 127, 255, cv.THRESH_BINARY)
-            result.append(thresh1)
-            ret, thresh1 = cv.threshold(self.image, 127, 255, cv.THRESH_BINARY_INV)
-            result.append(thresh1)
-            ret, thresh1 = cv.threshold(self.image, 127, 255, cv.THRESH_TRUNC)
-            result.append(thresh1)
-            ret, thresh1 = cv.threshold(self.image, 127, 255, cv.THRESH_TOZERO)
-            result.append(thresh1)
-            ret, thresh1 = cv.threshold(self.image, 127, 255, cv.THRESH_TOZERO_INV)
-            result.append(thresh1)
-
-            for i in range(0, len(result)):
-                cv.imshow(thresType[i], result[i])
-
+            cv.imshow('Lines', self.image)
             cv.waitKey(0)
 
     def shapeDetection(self):
