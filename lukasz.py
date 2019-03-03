@@ -3,6 +3,7 @@ import cv2
 import numpy as np
 from sklearn import cluster
 
+
 #tablica reprezentująca szachownicę jako macierz
 Matrix = np.zeros((8,8))
 
