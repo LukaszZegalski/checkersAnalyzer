@@ -11,42 +11,33 @@ class checkersAnalyzer(object):
         self.image = None
         self.debug = debug
         self.points = []
+        self.width = 450
+        self.height = 450
 
     def read(self, path):
         self.image = cv2.imread(path, cv2.IMREAD_COLOR)
-        self.image = cv2.resize(self.image, (300,300))
+        self.image = cv2.resize(self.image, (self.width,self.height))
 
         if self.debug:
             cv2.imshow('Orginal', self.image)
 
-    def detectBoard(self):
-
+    def checkboardTransposition(self):
         def onMouse(event, x, y, flags, param):
             if event == cv2.EVENT_LBUTTONDOWN:
                 print('x = %d, y = %d' % (x, y))
                 self.points.append([x,y])
 
-        threshBinary = self.image
-        #threshBinary = cv2.blur(threshBinary, (5, 5))
-        #_, threshBinary = cv2.threshold(threshBinary, 110, 255, cv2.THRESH_BINARY)
-        cv2.imshow('Binary threshold', threshBinary)
+        cv2.imshow('Binary threshold', self.image)
         cv2.setMouseCallback('Binary threshold', onMouse)
-        print('1')
-        cv2.waitKey(0)
-        cv2.destroyAllWindows()
+        while len(self.points)<4:
+            cv2.waitKey(1)
         p = self.points
         pts1 = np.float32([[p[0][0], p[0][1]], [p[1][0], p[1][1]], [p[2][0], p[2][1]], [p[3][0], p[3][1]]])
-        pts2 = np.float32([[0, 0], [300, 0], [300, 300], [0, 300]])
-        print('2')
+        pts2 = np.float32([[0, 0], [self.width, 0], [self.width, self.height], [0, self.height]])
         M = cv2.getPerspectiveTransform(pts1, pts2)
-        print('3')
-        dst = cv2.warpPerspective(threshBinary, M, (300, 300))
-        print('4')
+        dst = cv2.warpPerspective(self.image, M, (self.width, self.height))
         self.image = dst
-        print('5')
-        cv2.imshow('Warp', dst)
-        cv2.waitKey(0)
-        print('6')
+
 
 
     def detectCircle(self):
@@ -70,8 +61,8 @@ class checkersAnalyzer(object):
                 wspolrzedne.update({str(x) + str(y): [X_plansza * (x + 1), Y_plansza * (y + 1)]})
 
         # Wczytanie zdjęcia z warcabami, przeskalowanie, zamiana na skalę szarości
-        img = cv2.cvtColor(cv2.resize(self.image, (450, 454)),cv2.COLOR_BGR2GRAY)
-        color = cv2.resize(self.image, (450, 454))
+        img = cv2.cvtColor(self.image,cv2.COLOR_BGR2GRAY)
+        color = self.image.copy()
 
         # wyliczenie szerkości pól
         X_wczytane = img.shape[0] / 8
