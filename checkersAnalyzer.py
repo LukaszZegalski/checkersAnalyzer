@@ -6,29 +6,44 @@ from sklearn import cluster
 
 class checkersAnalyzer(object):
 
-    #wczytanie zdjecia
+    #zmienne klasowe
     def __init__(self, debug):
+        #obraz szachownicy z kamery
         self.image = None
         self.debug = debug
+        #wspołrzędne do przekształcenia
         self.points = []
+        #szerokość obrazu do obróbki
         self.width = 450
+        #wysokość obrazu do obróbki
         self.height = 450
+        #macierz pozycji pionków
+        self.matrix = np.zeros((8, 8))
+        #plansza do wizualizacji
+        self.board = None
+        self.image_circle = None
+        #słownik wspołrzędne w macierzy, współrzędne na obrazie
+        self.coordinates = {}
+        #wielkość pojedynczego pola w planszy do wizualizacji
+        self.height_width_one_area_in_board = 543 // 8
 
-    def read(self, path):
-        self.image = cv2.imread(path, cv2.IMREAD_COLOR)
+    #wczytanie zdjecia
+    def read(self, path1):
+        self.image = cv2.imread(path1, cv2.IMREAD_COLOR)
         self.image = cv2.resize(self.image, (self.width,self.height))
 
         if self.debug:
             cv2.imshow('Orginal', self.image)
 
+    #Przekształcenie szachownicy do odpowiednich rozmiarów
     def checkboardTransposition(self):
         def onMouse(event, x, y, flags, param):
             if event == cv2.EVENT_LBUTTONDOWN:
-                print('x = %d, y = %d' % (x, y))
+                #print('x = %d, y = %d' % (x, y))
                 self.points.append([x,y])
 
-        cv2.imshow('Binary threshold', self.image)
-        cv2.setMouseCallback('Binary threshold', onMouse)
+        cv2.imshow('Wejściowy obraz', self.image)
+        cv2.setMouseCallback('Wejściowy obraz', onMouse)
         while len(self.points)<4:
             cv2.waitKey(1)
         p = self.points
@@ -38,38 +53,21 @@ class checkersAnalyzer(object):
         dst = cv2.warpPerspective(self.image, M, (self.width, self.height))
         self.image = dst
 
-
-
-    def detectCircle(self):
-
-        # tablica reprezentująca szachownicę jako macierz
-        Matrix = np.zeros((8, 8))
-
-        # Plansza do wizualizacji
-        Plansza = cv2.imread('Picture_Lukasz/plansza2.jpg', cv2.IMREAD_COLOR)
-
-        # Słownik klucz: współrzędne tablicowe, wartość: współrzędne na obrazie
-        wspolrzedne = {}
-
-        # Szerokość, Wysokość pojedynczego pola w plamszy
-        X_plansza = 543 // 8
-        Y_plansza = 544 // 8
-
-        # Wypełnienie słwnika odpowiednimi wartościami
+    # Wypełnienie słwnika odpowiednimi wartościami
+    def intoDictionary(self):
         for x in range(0, 8):
             for y in range(0, 8):
-                wspolrzedne.update({str(x) + str(y): [X_plansza * (x + 1), Y_plansza * (y + 1)]})
+                self.coordinates.update({str(x) + str(y): [self.height_width_one_area_in_board * (x + 1), self.height_width_one_area_in_board * (y + 1)]})
 
-        # Wczytanie zdjęcia z warcabami, przeskalowanie, zamiana na skalę szarości
+    #wykrywanie pionków
+    def detectCircle(self):
+        # zamiana BGR na skalę szarości
         img = cv2.cvtColor(self.image,cv2.COLOR_BGR2GRAY)
-        color = self.image.copy()
+        self.image_circle = self.image.copy()
 
-        # wyliczenie szerkości pól
-        X_wczytane = img.shape[0] / 8
-        Y_wczytane = img.shape[1] / 8
-
-        # zamiana na RGB w celu zaznaczenia położenia pionków
-        cimg = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+        # wyliczenie szerkości pól na obrazie z kamery
+        width_one_area_image = img.shape[0] / 8
+        height_one_area_image = img.shape[1] / 8
 
         # Wyszukanie kół na obrazie
         circles = cv2.HoughCircles(img, cv2.HOUGH_GRADIENT, 2, 40, param1=100, param2=30, minRadius=18, maxRadius=22)
@@ -77,21 +75,21 @@ class checkersAnalyzer(object):
 
         # Zaznaczenie środków znalezionych kół oraz ich obrysów
         for i in circles[0, :]:
-            cv2.circle(cimg, (i[0], i[1]), i[2], (0, 255, 0), 1);
-            cv2.circle(cimg, (i[0], i[1]), 2, (0, 0, 255), 3);
+            cv2.circle(self.image_circle, (i[0], i[1]), i[2], (0, 255, 0), 1);
+            cv2.circle(self.image_circle, (i[0], i[1]), 2, (0, 0, 255), 3);
 
         # Stworzenie tablicy przechowującej wspołrzęnde poszczególnych pionów - tablica 8 na 8
         Matrix2 = []
 
         # Stworzenie tablicy przechowującej wycinki z centrum poszczególnych pionków
-        centra = []
+        center_circle = []
 
         # Wypełnienie tablicy Matrix2 oraz centra
         for x in circles[0]:
-            x1 = int(x[1] // X_wczytane)
-            y1 = int(x[0] // Y_wczytane)
-            fragment = img[x[1] - 5:x[1] + 5, x[0] - 5:x[0] + 5]
-            centra.append(fragment.copy())
+            x1 = int(x[1] // width_one_area_image)
+            y1 = int(x[0] // height_one_area_image)
+            cut_area = img[x[1] - 5:x[1] + 5, x[0] - 5:x[0] + 5]
+            center_circle.append(cut_area.copy())
             Matrix2.append([y1, x1])
 
         # stworzenie pomocniczych tablic do spłaszczenia
@@ -99,7 +97,7 @@ class checkersAnalyzer(object):
         centra_final = []
 
         # Spłaszczenie tablicy do postaci [ [piksel, piksel, ....] , [] , [] , .....]
-        for x in centra:
+        for x in center_circle:
             for y in x:
                 for z in y:
                     pom.append(z)
@@ -107,7 +105,6 @@ class checkersAnalyzer(object):
             pom.clear()
 
         # wykorzystanie k-średnich w celu podziału zbioru na 2 grupy, białe oraz czarne pionki
-        kernel = np.ones((3, 3), np.uint8)
         k_means = cluster.KMeans(n_clusters=2)
         k_means.fit(centra_final)
         labels = k_means.labels_
@@ -115,19 +112,36 @@ class checkersAnalyzer(object):
         # Uzupełnianie tablicy Matrix odpowiednimi pionami na danej pozycji oraz narysowanie ich na Plansza
         for x, y in zip(Matrix2, labels):
             if y == 0:
-                Matrix[x[1], x[0]] = 1
-                cv2.circle(Plansza,
-                           (wspolrzedne[str(x[1]) + str(x[0])][1] - 34, wspolrzedne[str(x[1]) + str(x[0])][0] - 34), 20,
+                self.matrix[x[1], x[0]] = 1
+                cv2.circle(self.board,
+                           (self.coordinates[str(x[1]) + str(x[0])][1] - 34, self.coordinates[str(x[1]) + str(x[0])][0] - 34), 20,
                            (0, 0, 255), -1)
             else:
-                Matrix[x[1], x[0]] = 2
-                cv2.circle(Plansza,
-                           (wspolrzedne[str(x[1]) + str(x[0])][1] - 34, wspolrzedne[str(x[1]) + str(x[0])][0] - 34), 20,
+                self.matrix[x[1], x[0]] = 2
+                cv2.circle(self.board,
+                           (self.coordinates[str(x[1]) + str(x[0])][1] - 34, self.coordinates[str(x[1]) + str(x[0])][0] - 34), 20,
                            (0, 255, 0), -1)
 
+    def drawBoard(self):
         a = ord('a')
         while a != ord('q'):
-            cv2.imshow('plansza_zaznaczone', cimg)
-            cv2.imshow('plansza', color)
-            cv2.imshow('Wizualizacja', Plansza)
+            cv2.imshow('Zaznaczone pionki', self.image_circle)
+            cv2.imshow('Plansza', self.image)
+            cv2.imshow('Wizualizacja', self.board)
             a = cv2.waitKey(1)
+
+    def detectAreaBoardDistribution(self):
+        # zamiana BGR na skalę szarości
+        img = cv2.cvtColor(self.image, cv2.COLOR_BGR2GRAY)
+
+        # wyliczenie szerkości pól na obrazie z kamery
+        width_one_area_image = img.shape[0] // 8
+        height_one_area_image = img.shape[1] // 8
+
+        cut_area = img[width_one_area_image*3:width_one_area_image*4,height_one_area_image:width_one_area_image*2]
+        ret, thresh1 = cv2.threshold(cut_area, 175, 255, cv2.THRESH_BINARY)
+
+        if thresh1[width_one_area_image//2,height_one_area_image//2]==0:
+            self.board = cv2.imread('./Picture/board_r.jpg', cv2.IMREAD_COLOR)
+        else:
+            self.board = cv2.imread('./Picture/board_l.jpg', cv2.IMREAD_COLOR)
