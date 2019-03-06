@@ -1,9 +1,11 @@
 import checkersAnalyzer as ca
 import cv2
-import numpy as np
 
 if __name__ == '__main__':
     cap = cv2.VideoCapture('Picture\movie.avi')
+    ret, frame1 = cap.read()
+    a = frame1.shape[0]
+    b = frame1.shape[1]
     analyzer = ca.checkersAnalyzer(False)
     ret, frame = cap.read()
     analyzer.readVideo(frame)
@@ -17,6 +19,6 @@ if __name__ == '__main__':
         cv2.imshow('Wizualizacja', d)
         ret, frame = cap.read()
         analyzer.readVideo(frame)
-        cv2.waitKey(20)
+        cv2.waitKey(1)
 cap.release()
 cv2.destroyAllWindows()

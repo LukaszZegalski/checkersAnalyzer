@@ -171,3 +171,4 @@ class checkersAnalyzer(object):
         img = p.screenshot()
         img = np.array(img)
         self.image = img
+
