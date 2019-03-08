@@ -1,57 +1,44 @@
 import cv2
 import numpy as np
-from sklearn import cluster
 import pyautogui as p
-
+import collections as co
 
 class checkersAnalyzer(object):
 
     #zmienne klasowe
     def __init__(self, debug):
-        #obraz szachownicy z kamery
-        self.image = None
         self.debug = debug
-
-        #wspołrzędne do przekształcenia
-        self.points = []
-        #szerokość obrazu do obróbki
-        self.width = 450
-        #wysokość obrazu do obróbki
-        self.height = 450
-        #macierz pozycji pionków
-        self.matrix = np.zeros((8, 8))
-        #plansza do wizualizacji
-        self.board = None
-        self.board_2 = None
-        self.image_circle = None
-        #słownik wspołrzędne w macierzy, współrzędne na obrazie
-        self.coordinates = {}
-        #wielkość pojedynczego pola w planszy do wizualizacji
-        self.height_width_one_area_in_board = 543 // 8
+        self.image = None #obraz szachownicy z kamery
+        self.points = [] #wspołrzędne do przekształcenia
+        self.wh_size= 450 #szerokość, wysokość obrazu do obróbki
+        self.matrix_pawns = np.zeros((8, 8)) #macierz pozycji pionków aktualna
+        self.matrix_old_pawns = np.zeros((8, 8)) #macierz pozycji pionków poprzednia
+        self.coordinates = {} #słownik wspołrzędne w macierzy, współrzędne na obrazie
+        self.sq = 68 #wielkość pojedynczego pola w planszy do wizualizacji
+        self.checkers_size = 544 #rozmiar planszy do wizualizacji
+        self.board = None #Wizualizacja planszy
+        self.first_sq = None
 
 
+    #ustawienie klatki z filmu/kamery jako img
     def readVideo(self,img):
-        self.image=img
+        self.image=cv2.resize(img,(self.wh_size,self.wh_size))
 
     #wczytanie zdjecia
     def read(self, path1):
         self.image = cv2.imread(path1, cv2.IMREAD_COLOR)
-        self.image = cv2.resize(self.image, (self.width,self.height))
+        self.image = cv2.resize(self.image, (self.wh_size,self.wh_size))
 
-        if self.debug:
-            cv2.imshow('Orginal', self.image)
-
-    #pobranie pozycji szachownicy
-
+    #transformacja morfologiczna wyodrębniająca szachownicę na podstawie wczęsniej podanych parametrów
     def checkboardTransposition(self):
         p = self.points
         pts1 = np.float32([[p[0][0], p[0][1]], [p[1][0], p[1][1]], [p[2][0], p[2][1]], [p[3][0], p[3][1]]])
-        pts2 = np.float32([[0, 0], [self.width, 0], [self.width, self.height], [0, self.height]])
+        pts2 = np.float32([[0, 0], [self.wh_size, 0], [self.wh_size, self.wh_size], [0, self.wh_size]])
         M = cv2.getPerspectiveTransform(pts1, pts2)
-        dst = cv2.warpPerspective(self.image, M, (self.width, self.height))
+        dst = cv2.warpPerspective(self.image, M, (self.wh_size, self.wh_size))
         self.image = dst
 
-    #Przekształcenie pobranie położenia szachownicy
+    # pobranie pozycji szachownicy w przypadku odręcznego zaznaczania jej położenia
     def checkboardCoordinate(self):
         def onMouse(event, x, y,flaga,a):
             if event == cv2.EVENT_LBUTTONDOWN:
@@ -61,11 +48,55 @@ class checkersAnalyzer(object):
         while len(self.points)<4:
             cv2.waitKey(1)
 
-    # Wypełnienie słwnika odpowiednimi wartościami
+    #Wypełnienie słwnika odpowiednimi wartościami (x,y) -> pozycja tablicy : [a,b] -> pozycja pikseli w wizualizacji
     def intoDictionary(self):
         for x in range(0, 8):
             for y in range(0, 8):
-                self.coordinates.update({str(x) + str(y): [self.height_width_one_area_in_board * (x + 1), self.height_width_one_area_in_board * (y + 1)]})
+                self.coordinates.update({str(x) + str(y): [self.sq * (x + 1), self.sq * (y + 1)]})
+
+    #tworzenie szachownucy position=0 -> lewy grny czarny, position=1 -> lewy górny biały
+    def createCheckers(self):
+        img = np.zeros((self.checkers_size,self.checkers_size, 3), dtype=np.uint8)
+        c = np.fromfunction(lambda x, y: ((x // self.sq) + (y // self.sq)) % 2, (self.checkers_size, self.checkers_size))
+        if self.first_sq == 1:
+            img[c == 0] = (0,0,0)
+            img[c == 1] = (255,255,255)
+        else:
+            img[c == 0] = (255,255,255)
+            img[c == 1] = (0,0,0)
+        return img
+
+    #Wypisanie aktualnego stanu pionków
+    def drawTextInImageText(self):
+        text = np.zeros((136,self.checkers_size, 3), dtype=np.uint8)
+        text[::]=(128,128,128)
+        ilosc = co.Counter(self.matrix_pawns.flatten())
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        cv2.putText(text, 'Biale: '+str(ilosc[2.0]), (150, 60), font, 2, (255, 255, 255), 2, cv2.LINE_AA)
+        cv2.putText(text, 'Czarne: '+str(ilosc[1.0]), (110, 125), font, 2, (255, 255, 255), 2, cv2.LINE_AA)
+        return text
+
+    #przekazanie parametrów w celu wyświetlenia obrazu, złączenie szachownicy z napisami
+    def drawBoard(self):
+        new_board = np.concatenate((self.board,self.drawTextInImageText()),axis=0)
+        return self.image_circle, self.image, new_board
+        cv2.imshow('Zaznaczone pionki', self.image_circle)
+        cv2.imshow('Plansza', self.image)
+        cv2.imshow('Wizualizacja', new_board)
+
+    #Wykrycie rozkładu pół na szachownicy
+    def detectAreaBoardDistribution(self):
+        img = cv2.cvtColor(self.image, cv2.COLOR_BGR2GRAY)
+        width = img.shape[0] // 8
+        height = img.shape[1] // 8
+
+        cut_area = img[width*3:width*4,height:width*2]
+        thresh = cv2.threshold(cut_area, 175, 255, cv2.THRESH_BINARY)[1]
+
+        if thresh[width//2,height//2]==0:
+            self.first_sq = 1
+        else:
+            self.first_sq = 0
 
     #wykrywanie pionków
     def detectCircle(self):
@@ -74,8 +105,8 @@ class checkersAnalyzer(object):
         self.image_circle = self.image.copy()
 
         # wyliczenie szerkości pól na obrazie z kamery
-        width_one_area_image = img.shape[0] / 8
-        height_one_area_image = img.shape[1] / 8
+        width_sq = img.shape[0] / 8
+        height_sq =  img.shape[1] / 8
 
         # Wyszukanie kół na obrazie
         circles = cv2.HoughCircles(img, cv2.HOUGH_GRADIENT, 2, 40, param1=100, param2=30, minRadius=18, maxRadius=22)
@@ -86,89 +117,31 @@ class checkersAnalyzer(object):
             cv2.circle(self.image_circle, (i[0], i[1]), i[2], (0, 255, 0), 1);
             cv2.circle(self.image_circle, (i[0], i[1]), 2, (0, 0, 255), 3);
 
-        # Stworzenie tablicy przechowującej wspołrzęnde poszczególnych pionów - tablica 8 na 8
-        Matrix2 = []
 
-        # Stworzenie tablicy przechowującej wycinki z centrum poszczególnych pionków
-        center_circle = []
+        matrix2 = []  # Stworzenie tablicy przechowującej wspołrzęnde poszczególnych pionów - tablica 8 na 8
+        center_circle = [] # Stworzenie tablicy przechowującej wycinki z centrum poszczególnych pionków
 
         # Wypełnienie tablicy Matrix2 oraz centra
         for x in circles[0]:
-            x1 = int(x[1] // width_one_area_image)
-            y1 = int(x[0] // height_one_area_image)
+            x1 = int(x[1] // width_sq)
+            y1 = int(x[0] // height_sq)
             cut_area = img[x[1] - 5:x[1] + 5, x[0] - 5:x[0] + 5]
             ret, thresh1 = cv2.threshold(cut_area, 160, 255, cv2.THRESH_BINARY)
             center_circle.append(thresh1.copy())
-            Matrix2.append([y1, x1])
+            matrix2.append([y1, x1])
 
-        # stworzenie pomocniczych tablic do spłaszczenia
-        pom = []
-        centra_final = []
-
-        # Spłaszczenie tablicy do postaci [ [piksel, piksel, ....] , [] , [] , .....]
-        for x in center_circle:
-            for y in x:
-                for z in y:
-                    pom.append(z)
-            centra_final.append(pom.copy())
-            pom.clear()
-
-        # Uzupełnianie tablicy Matrix odpowiednimi pionami na danej pozycji oraz narysowanie ich na Plansza
-        self.board=self.board2.copy()
-        for x, y in zip(Matrix2, center_circle):
+        # Aktualizacja matrix_pawns oraz rysowania pionów
+        self.matrix_old_pawns = self.matrix_pawns.copy()
+        self.matrix_pawns[::] = 0
+        self.board = self.createCheckers()
+        for x, y in zip(matrix2, center_circle):
             if y[4,4]==0:
-                self.matrix[x[1], x[0]] = 1
+                self.matrix_pawns[x[1], x[0]] = 1
                 cv2.circle(self.board,
                            (self.coordinates[str(x[1]) + str(x[0])][1] - 34, self.coordinates[str(x[1]) + str(x[0])][0] - 34), 20,
-                           (0, 0, 255), -1)
+                           (64,64,64), -1)
             else:
-                self.matrix[x[1], x[0]] = 2
+                self.matrix_pawns[x[1], x[0]] = 2
                 cv2.circle(self.board,
                            (self.coordinates[str(x[1]) + str(x[0])][1] - 34, self.coordinates[str(x[1]) + str(x[0])][0] - 34), 20,
-                           (0, 255, 0), -1)
-
-    def drawBoard(self):
-        return self.image_circle, self.image, self.board
-        #cv2.imshow('Zaznaczone pionki', self.image_circle)
-        #cv2.imshow('Plansza', self.image)
-        #cv2.imshow('Wizualizacja', self.board)
-
-
-    def detectAreaBoardDistribution(self):
-        # zamiana BGR na skalę szarości
-        img = cv2.cvtColor(self.image, cv2.COLOR_BGR2GRAY)
-
-        # wyliczenie szerkości pól na obrazie z kamery
-        width_one_area_image = img.shape[0] // 8
-        height_one_area_image = img.shape[1] // 8
-
-        cut_area = img[width_one_area_image*3:width_one_area_image*4,height_one_area_image:width_one_area_image*2]
-        ret, thresh1 = cv2.threshold(cut_area, 175, 255, cv2.THRESH_BINARY)
-
-        if thresh1[width_one_area_image//2,height_one_area_image//2]==0:
-            self.board = cv2.imread('./Picture/board_r.jpg', cv2.IMREAD_COLOR)
-            self.board2 = cv2.imread('./Picture/board_r.jpg', cv2.IMREAD_COLOR)
-        else:
-            self.board = cv2.imread('./Picture/board_l.jpg', cv2.IMREAD_COLOR)
-            self.board2 = cv2.imread('./Picture/board_l.jpg', cv2.IMREAD_COLOR)
-
-    def analyzeCircleonBoard(self):
-        white = []
-        black = []
-        pom = 0
-        for x in self.matrix:
-            for y in x:
-                if pom%2 == 0:
-                    white.append(y)
-                else:
-                    black.append(y)
-                pom+=1
-            pom = 0
-        print(white)
-        print(black)
-
-    def getPulpit(self):
-        img = p.screenshot()
-        img = np.array(img)
-        self.image = img
-
+                           (217,217,217), -1)
